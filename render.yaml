@@ -1,0 +1,25 @@
+# Render Blueprint for SoundForge AI
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: soundforge-ai
+    runtime: python
+    region: frankfurt  # or oregon, singapore, etc.
+    plan: starter  # or free for testing
+    
+    buildCommand: |
+      pip install -r backend/requirements.txt
+      cd frontend && npm ci && npm run build
+      mkdir -p ../backend/static
+      cp -r dist/* ../backend/static/
+    
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: NODE_VERSION  
+        value: "20"
+    
+    healthCheckPath: /
