@@ -8,19 +8,12 @@ librosa==0.10.1
 soundfile==0.12.1
 scipy==1.12.0
 numpy==1.26.3
-pydub==0.25.1
-
-# AI-powered noise reduction
-noisereduce==3.0.0
 
 # Spotify's professional audio effects
 pedalboard==0.8.9
 
 # LUFS loudness normalization
 pyloudnorm==0.1.1
-
-# Voice Activity Detection
-# webrtcvad==2.0.10  # Requires gcc, optional
 
 # Additional utilities
 python-dotenv==1.0.0

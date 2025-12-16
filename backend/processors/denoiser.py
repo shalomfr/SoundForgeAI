@@ -1,14 +1,13 @@
 """
-Advanced Denoiser - Combines multiple noise reduction techniques.
-Includes spectral gating, AI-powered noise reduction, and adaptive filtering.
+Advanced Denoiser - Noise reduction using spectral gating.
+Lightweight implementation without heavy dependencies.
 """
 
 import numpy as np
-import noisereduce as nr
 from scipy import signal
-from scipy.ndimage import median_filter
+from scipy.ndimage import median_filter, gaussian_filter1d
 import librosa
-from typing import Optional, Tuple
+from typing import Optional
 from pedalboard import Pedalboard, NoiseGate
 
 
@@ -16,12 +15,14 @@ class Denoiser:
     """
     Professional-grade denoiser combining multiple techniques:
     1. Noise Gate - Removes noise during silence
-    2. Spectral Denoising - AI-powered spectral subtraction
-    3. Adaptive Filtering - Real-time noise tracking
+    2. Spectral Gating - Frequency-based noise reduction
+    3. High-pass filtering - Removes rumble
     """
     
     def __init__(self, sample_rate: int = 44100):
         self.sample_rate = sample_rate
+        self.n_fft = 2048
+        self.hop_length = 512
     
     def process(self, audio: np.ndarray, 
                 strength: float = 0.5,
@@ -56,9 +57,9 @@ class Denoiser:
         if use_noise_gate:
             result = self._apply_noise_gate(result, gate_threshold_db)
         
-        # Step 2: Spectral Denoising (AI-powered)
+        # Step 2: Spectral Gating (lightweight noise reduction)
         if use_spectral_denoise:
-            result = self._apply_spectral_denoise(result, strength, noise_profile)
+            result = self._apply_spectral_gating(result, strength, noise_profile)
         
         # Step 3: High-pass filter to remove rumble
         result = self._apply_highpass(result, cutoff=80)
@@ -87,45 +88,53 @@ class Denoiser:
         
         return result
     
-    def _apply_spectral_denoise(self, audio: np.ndarray, 
-                                 strength: float,
-                                 noise_profile: Optional[np.ndarray] = None) -> np.ndarray:
-        """Apply AI-powered spectral noise reduction."""
+    def _apply_spectral_gating(self, audio: np.ndarray, 
+                                strength: float,
+                                noise_profile: Optional[np.ndarray] = None) -> np.ndarray:
+        """
+        Apply spectral gating for noise reduction.
+        This is a lightweight alternative to noisereduce.
+        """
         result = audio.copy()
         
-        # Map strength to prop_decrease (0.5 = moderate, 1.0 = aggressive)
-        prop_decrease = strength * 0.8 + 0.2  # Range: 0.2 to 1.0
-        
         for ch in range(audio.shape[0]):
-            channel_audio = audio[ch]
+            channel = audio[ch]
             
-            # Use noisereduce library with stationary noise model
-            if noise_profile is not None and noise_profile.ndim >= 1:
-                # Use provided noise profile
-                noise_sample = noise_profile if noise_profile.ndim == 1 else noise_profile[0]
-                reduced = nr.reduce_noise(
-                    y=channel_audio,
-                    sr=self.sample_rate,
-                    y_noise=noise_sample,
-                    prop_decrease=prop_decrease,
-                    stationary=True,
-                    n_fft=2048,
-                    hop_length=512
-                )
+            # STFT
+            stft = librosa.stft(channel, n_fft=self.n_fft, hop_length=self.hop_length)
+            magnitude = np.abs(stft)
+            phase = np.angle(stft)
+            
+            # Estimate noise floor
+            if noise_profile is not None and len(noise_profile) > 0:
+                noise_stft = librosa.stft(noise_profile, n_fft=self.n_fft, hop_length=self.hop_length)
+                noise_mag = np.mean(np.abs(noise_stft), axis=1, keepdims=True)
             else:
-                # Auto-detect noise (non-stationary mode for better results)
-                reduced = nr.reduce_noise(
-                    y=channel_audio,
-                    sr=self.sample_rate,
-                    prop_decrease=prop_decrease,
-                    stationary=False,
-                    n_fft=2048,
-                    hop_length=512,
-                    thresh_n_mult_nonstationary=2.0,
-                    n_std_thresh_stationary=1.5
-                )
+                # Auto-estimate noise from quietest frames
+                frame_energy = np.sum(magnitude ** 2, axis=0)
+                quiet_frames = frame_energy < np.percentile(frame_energy, 10)
+                if np.any(quiet_frames):
+                    noise_mag = np.mean(magnitude[:, quiet_frames], axis=1, keepdims=True)
+                else:
+                    noise_mag = np.percentile(magnitude, 5, axis=1, keepdims=True)
             
-            result[ch] = reduced
+            # Spectral subtraction with soft mask
+            threshold = noise_mag * (1 + strength * 2)  # Scale threshold by strength
+            
+            # Create soft mask
+            mask = np.clip((magnitude - threshold) / (magnitude + 1e-10), 0, 1)
+            mask = gaussian_filter1d(mask, sigma=2, axis=1)  # Smooth temporally
+            
+            # Apply mask
+            magnitude_cleaned = magnitude * mask
+            
+            # Ensure we don't remove too much
+            min_magnitude = magnitude * (0.1 * (1 - strength))
+            magnitude_cleaned = np.maximum(magnitude_cleaned, min_magnitude)
+            
+            # Reconstruct
+            stft_cleaned = magnitude_cleaned * np.exp(1j * phase)
+            result[ch] = librosa.istft(stft_cleaned, hop_length=self.hop_length, length=len(channel))
         
         return result
     
@@ -237,4 +246,3 @@ class Denoiser:
         result = audio * gain_samples
         
         return result
-
