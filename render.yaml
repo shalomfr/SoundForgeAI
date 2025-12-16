@@ -10,7 +10,7 @@ services:
     
     buildCommand: |
       pip install -r backend/requirements.txt
-      cd frontend && npm ci && npm run build
+      cd frontend && npm install && npm run build
       mkdir -p ../backend/static
       cp -r dist/* ../backend/static/
     
