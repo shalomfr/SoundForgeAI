@@ -82,14 +82,30 @@ class AnalysisResponse(BaseModel):
     audio_info: dict
 
 
-@app.get("/")
-async def root():
+@app.get("/api/health")
+async def health_check():
     """Health check endpoint."""
     return {
         "name": "SoundForge AI API",
         "status": "running",
         "version": "1.0.0",
         "engines": 12
+    }
+
+
+@app.get("/")
+async def root():
+    """Serve frontend or API info."""
+    if STATIC_DIR.exists():
+        index_path = STATIC_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+    return {
+        "name": "SoundForge AI API",
+        "status": "running",
+        "version": "1.0.0",
+        "engines": 12,
+        "docs": "/docs"
     }
 
 
