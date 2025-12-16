@@ -20,7 +20,7 @@ pedalboard==0.8.9
 pyloudnorm==0.1.1
 
 # Voice Activity Detection
-webrtcvad==2.0.10
+# webrtcvad==2.0.10  # Requires gcc, optional
 
 # Additional utilities
 python-dotenv==1.0.0
